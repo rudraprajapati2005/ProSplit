@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final themeProvider = StateNotifierProvider<ThemeNotifier, ThemeMode>((ref) {
@@ -23,10 +23,7 @@ class AppTheme {
       brightness: Brightness.light,
     ),
     textTheme: GoogleFonts.interTextTheme(),
-    appBarTheme: const AppBarTheme(
-      centerTitle: true,
-      elevation: 0,
-    ),
+    appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
   );
 
   static ThemeData darkTheme = ThemeData(
@@ -37,9 +34,6 @@ class AppTheme {
       brightness: Brightness.dark,
     ),
     textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
-    appBarTheme: const AppBarTheme(
-      centerTitle: true,
-      elevation: 0,
-    ),
+    appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
   );
 }

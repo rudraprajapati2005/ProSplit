@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "876629588496",
+    "project_id": "prosplit-app",
+    "storage_bucket": "prosplit-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:876629588496:android:6d643c8c40ac878cc92895",
+        "android_client_info": {
+          "package_name": "com.example.first_project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCma8aqTZBKT6jqTn7u9EJJg5DLCMbX-DU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

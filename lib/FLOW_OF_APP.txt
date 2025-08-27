@@ -1,0 +1,244 @@
+### High-level auth flow
+- App starts → initializes Flutter + Firebase → builds UI within Riverpod’s `ProviderScope`.
+- `AuthenticationWrapper` subscribes to `authControllerProvider` and decides which screen to show.
+- `AuthController` listens to FirebaseAuth’s stream; when signed in, it loads the user from Firestore.
+- UI calls controller methods (`signIn`, `signUp`, `signOut`) which delegate to `AuthRepository`.
+- `AuthRepository` talks to FirebaseAuth and Cloud Firestore.
+
+### Key code paths and why each line matters
+
+```10:14:lib/main.dart
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(const ProviderScope(child: MyApp()));
+}
+```
+- `WidgetsFlutterBinding.ensureInitialized()`: Ensures Flutter engine is ready before async Firebase init.
+- `Firebase.initializeApp(...)`: Boots Firebase using your `firebase_options.dart` config so FirebaseAuth/Firestore can be used.
+- `ProviderScope`: Root Riverpod container so providers (`authControllerProvider` etc.) work across the app.
+
+```33:52:lib/main.dart
+class AuthenticationWrapper extends ConsumerWidget {
+  ...
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authControllerProvider);
+
+    return authState.when(
+      data: (user) {
+        if (user == null) {
+          return const LoginScreen();
+        }
+        return const DashboardScreen();
+      },
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (error, stackTrace) =>
+          Scaffold(body: Center(child: Text('Error: $error'))),
+    );
+  }
+}
+```
+- `ref.watch(authControllerProvider)`: Subscribes to auth state; UI rebuilds automatically.
+- `when(...)`: Declaratively picks screen:
+  - `null` user → `LoginScreen`
+  - non-null → `DashboardScreen`
+  - `loading`/`error` states handled gracefully
+
+```5:13:lib/features/auth/domain/auth_controller.dart
+final authControllerProvider = StateNotifierProvider<AuthController, AsyncValue<UserModel?>>((ref) {
+  return AuthController(ref.watch(authRepositoryProvider));
+});
+```
+- Exposes `AuthController` as a provider; state type is `AsyncValue<UserModel?>` to capture loading/error/data.
+
+```12:19:lib/features/auth/domain/auth_controller.dart
+AuthController(this._authRepository) : super(const AsyncValue.loading()) {
+  _authRepository.authStateChanges().listen((user) {
+    if (user == null) {
+      state = const AsyncValue.data(null);
+    } else {
+      _loadUser();
+    }
+  });
+}
+```
+- Starts in `loading`.
+- Subscribes to `FirebaseAuth.instance.authStateChanges()` via repository:
+  - Signed out → `state = data(null)` (UI shows login).
+  - Signed in → load profile from Firestore (`_loadUser()`).
+
+```22:29:lib/features/auth
+
+- Signed in → load profile from Firestore (`_loadUser()`).
+
+```22:29:lib/features/auth/domain/auth_controller.dart
+Future<void> _loadUser() async {
+  try {
+    final user = await _authRepository.getCurrentUser();
+    state = AsyncValue.data(user);
+  } catch (e, st) {
+    state = AsyncValue.error(e, st);
+  }
+}
+```
+- Why: After FirebaseAuth reports a non-null session, fetch the user profile from Firestore so the app has domain data (name/email, etc.). Errors are surfaced via `AsyncValue.error` for UI.
+
+```31:39:lib/features/auth/domain/auth_controller.dart
+Future<void> signIn(String email, String password) async {
+  try {
+    state = const AsyncValue.loading();
+    await _authRepository.signInWithEmailAndPassword(email, password);
+    await _loadUser();
+  } catch (e, st) {
+    state = AsyncValue.error(e, st);
+  }
+}
+```
+- Why: Switch to loading to reflect pending auth. Call FirebaseAuth sign-in via repository; on success, load profile to transition UI to dashboard.
+
+```41:49:lib/features/auth/domain/auth_controller.dart
+Future<void> signUp(String email, String password, String name) async {
+  try {
+    state = const AsyncValue.loading();
+    await _authRepository.createUserWithEmailAndPassword(email, password, name);
+    await _loadUser();
+  } catch (e, st) {
+    state = AsyncValue.error(e, st);
+  }
+}
+```
+- Why: Create Firebase user and immediately create a Firestore `users/{uid}` document. Then fetch it into state.
+
+```51:58:lib/features/auth/domain/auth_controller.dart
+Future<void> signOut() async {
+  try {
+    await _authRepository.signOut();
+    state = const AsyncValue.data(null);
+  } catch (e, st) {
+    state = AsyncValue.error(e, st);
+  }
+}
+```
+- Why: Sign out from FirebaseAuth and set state to null so UI shows the login screen.
+
+```6:11:lib/features/auth/data/auth_repository.dart
+final authRepositoryProvider = Provider<AuthRepository>((ref) {
+  return AuthRepository(
+    FirebaseAuth.instance,
+    FirebaseFirestore.instance,
+  );
+});
+```
+- Why: Centralize Firebase instances; makes testing and dependency injection straightforward.
+
+```19:30:lib/features/auth/data/auth_repository.dart
+Stream<User?> authStateChanges() => _auth.authStateChanges();
+
+Future<UserModel?> getCurrentUser() async {
+  final user = _auth.currentUser;
+  if (user == null) return null;
+
+  final doc = await _firestore.collection('users').doc(user.uid).get();
+  if (doc.exists) {
+    return UserModel.fromJson(doc.data()!);
+  }
+  return null;
+}
+```
+- Why: Expose FirebaseAuth’s real-time session changes. On demand, read Firestore `users/{uid}` to hydrate domain model.
+
+```32:35:lib/features/auth/data/auth_repository.dart
+Future<void> signInWithEmailAndPassword(String email, String password) async {
+  await _auth.signInWithEmailAndPassword(email: email, password: password);
+}
+```
+- Why: Thin wrapper around FirebaseAuth sign-in so UI doesn’t depend on Firebase directly.
+
+```36:56:lib/features/auth/data/auth_repository.dart
+Future<void> createUserWithEmailAndPassword(
+  String email,
+  String password,
+  String name,
+) async {
+  final credential = await _auth.createUserWithEmailAndPassword(
+    email: email,
+    password: password,
+  );
+
+  final user = UserModel(
+    id: credential.user!.uid,
+    email: email,
+    name: name,
+  );
+
+  await _firestore
+      .collection('users')
+      .doc(credential.user!.uid)
+      .set(user.toJson());
+}
+```
+- Why: After creating an auth account, we persist a profile document. This ensures your app has consistent user data beyond auth’s minimal fields.
+
+```58:64:lib/features/auth/data/auth_repository.dart
+Future<void> signOut() async {
+  await _auth.signOut();
+}
+
+Future<void> updateUserProfile(UserModel user) async {
+  await _firestore.collection('users').doc(user.id).update(user.toJson());
+}
+```
+- Why: Sign out through FirebaseAuth; profile updates go to Firestore.
+
+```26:46:lib/features/auth/presentation/login_screen.dart
+Future<void> _login() async {
+  if (!_formKey.currentState!.validate()) return;
+
+  setState(() => _isLoading = true);
+
+  try {
+    await ref.read(authControllerProvider.notifier).signIn(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+}
+```
+- Why: The UI delegates to the controller’s `signIn`. On success, the controller updates state → `AuthenticationWrapper` rebuilds → `DashboardScreen` shows.
+
+```40:46:lib/main.dart
+return authState.when(
+  data: (user) {
+    if (user == null) {
+      return const LoginScreen();
+    }
+    return const DashboardScreen();
+  },
+  loading: () =>
+      const Scaffold(body: Center(child: CircularProgressIndicator())),
+  error: (error, stackTrace) =>
+      Scaffold(body: Center(child: Text('Error: $error'))),
+);
+```
+- Why: This is the switchboard that reacts to controller state, ensuring a seamless transition between auth statuses without manual navigation.
+
+### Lifecycle summary
+- App bootstraps Flutter and Firebase.
+- Riverpod providers become available (`ProviderScope`).
+- `AuthController` subscribes to FirebaseAuth. Any change triggers either `null` (logged out) or `_loadUser()` (logged in).
+- Firestore profile is read and stored in state.
+- UI watches state and shows login or dashboard accordingly.
+- User actions (sign in/up/out) call controller methods which update Firebase and Firestore, then reflect new state to the UI.
+
+If you want, I can annotate specific lines inside `signup_screen.dart` or show how `user_model.dart` is structured and why `freezed`/`json_serializable` fields are chosen for profile consistency.

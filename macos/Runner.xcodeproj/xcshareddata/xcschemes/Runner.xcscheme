@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "33CC10EC2044A3C60003C045"
-               BuildableName = "first_project.app"
+               BuildableName = "splitpro_app.app"
                BlueprintName = "Runner"
                ReferencedContainer = "container:Runner.xcodeproj">
             </BuildableReference>
@@ -31,11 +31,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "33CC10EC2044A3C60003C045"
-            BuildableName = "first_project.app"
-            BlueprintName = "Runner"
-            ReferencedContainer = "container:Runner.xcodeproj">
+            BuildableName = "splitpro_app.app"
          </BuildableReference>
-      </MacroExpansion>
       <Testables>
          <TestableReference
             skipped = "NO"
@@ -66,8 +63,6 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "33CC10EC2044A3C60003C045"
-            BuildableName = "first_project.app"
-            BlueprintName = "Runner"
             ReferencedContainer = "container:Runner.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -83,7 +78,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "33CC10EC2044A3C60003C045"
-            BuildableName = "first_project.app"
+            BuildableName = "splitpro_app.app"
             BlueprintName = "Runner"
             ReferencedContainer = "container:Runner.xcodeproj">
          </BuildableReference>

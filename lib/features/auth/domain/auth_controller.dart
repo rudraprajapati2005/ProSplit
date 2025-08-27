@@ -20,10 +20,34 @@ class AuthController extends StateNotifier<AsyncValue<UserModel?>> {
   }
 
   Future<void> _loadUser() async {
+    print('🔄 AuthController: Starting _loadUser...');
     try {
+      print('👤 AuthController: Getting current user from repository...');
       final user = await _authRepository.getCurrentUser();
-      state = AsyncValue.data(user);
+      
+      if (user != null) {
+        print('✅ AuthController: User loaded: ${user.name} (${user.email})');
+        state = AsyncValue.data(user);
+      } else {
+        // If Firestore is offline but user is authenticated, create basic user model
+        print('⚠️ AuthController: Firestore offline, creating basic user model from Firebase Auth...');
+        final firebaseUser = _authRepository.currentFirebaseUser;
+        if (firebaseUser != null) {
+          final basicUser = UserModel(
+            id: firebaseUser.uid,
+            email: firebaseUser.email ?? '',
+            name: firebaseUser.displayName ?? 'User',
+          );
+          print('✅ AuthController: Basic user model created: ${basicUser.name} (${basicUser.email})');
+          state = AsyncValue.data(basicUser);
+        } else {
+          print('❌ AuthController: No Firebase user found');
+          state = const AsyncValue.data(null);
+        }
+      }
     } catch (e, st) {
+      print('❌ AuthController: Error loading user: $e');
+      print('❌ AuthController: Stack trace: $st');
       state = AsyncValue.error(e, st);
     }
   }
@@ -39,11 +63,18 @@ class AuthController extends StateNotifier<AsyncValue<UserModel?>> {
   }
 
   Future<void> signUp(String email, String password, String name) async {
+    print('🚀 AuthController: Starting signUp process...');
     try {
+      print('⏳ AuthController: Setting loading state...');
       state = const AsyncValue.loading();
+      print('🔐 AuthController: Calling repository createUserWithEmailAndPassword...');
       await _authRepository.createUserWithEmailAndPassword(email, password, name);
+      print('✅ AuthController: User creation completed, loading user profile...');
       await _loadUser();
+      print('✅ AuthController: SignUp process completed successfully');
     } catch (e, st) {
+      print('❌ AuthController: Error during signUp: $e');
+      print('❌ AuthController: Stack trace: $st');
       state = AsyncValue.error(e, st);
     }
   }

@@ -58,7 +58,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Welcome Back',
+                  'Welcome Back/Login',
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 32),

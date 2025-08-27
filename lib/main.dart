@@ -1,6 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
 import 'package:first_project/core/theme/app_theme.dart';
 import 'package:first_project/features/auth/domain/auth_controller.dart';
 import 'package:first_project/features/auth/presentation/login_screen.dart';
@@ -8,7 +10,14 @@ import 'package:first_project/features/dashboard/presentation/dashboard_screen.d
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  
+  // Enable Firestore offline persistence
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+  
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -43,16 +52,10 @@ class AuthenticationWrapper extends ConsumerWidget {
         }
         return const DashboardScreen();
       },
-      loading: () => const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      ),
-      error: (error, stackTrace) => Scaffold(
-        body: Center(
-          child: Text('Error: $error'),
-        ),
-      ),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (error, stackTrace) =>
+          Scaffold(body: Center(child: Text('Error: $error'))),
     );
   }
 }

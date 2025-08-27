@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.8.1
+  sdk: ^3.9.0
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -31,49 +31,40 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.8
+  
   # Firebase
-  firebase_core: ^2.24.2
-  firebase_auth: ^4.15.3
-  cloud_firestore: ^4.13.6
-  firebase_messaging: ^14.7.9
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.1
+  cloud_firestore: ^6.0.0
   
   # State Management
   flutter_riverpod: ^2.4.9
-  riverpod_annotation: ^2.3.3
   
-  # UI Components
-  cupertino_icons: ^1.0.8
-  google_fonts: ^6.1.0
-  flutter_slidable: ^3.0.1
-  shimmer: ^3.0.0
+  # UI
+  google_fonts: ^6.3.0
   
-  # Utils
-  intl: ^0.19.0
-  uuid: ^4.2.2
-  path_provider: ^2.1.1
-  shared_preferences: ^2.2.2
-  
-  # Data Classes
+  # Code Generation
   freezed_annotation: ^2.4.1
   json_annotation: ^4.8.1
-  
-  # Connectivity
-  connectivity_plus: ^5.0.2
-  cached_network_image: ^3.3.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
   
   # Code Generation
   build_runner: ^2.4.7
   freezed: ^2.4.6
   json_serializable: ^6.7.1
-  riverpod_generator: ^2.3.9
   
-  # Firebase Tools
-  firebase_analytics: ^10.7.4
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^5.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

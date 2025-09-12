@@ -1,0 +1,34 @@
+{
+	"folders": [
+		{
+			"path": "../.idea"
+		},
+		{
+			"path": "../android"
+		},
+		{
+			"path": "../build"
+		},
+		{
+			"path": "../ios"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../linux"
+		},
+		{
+			"path": "../macos"
+		},
+		{
+			"path": "../test"
+		},
+		{
+			"path": "../web"
+		},
+		{
+			"path": "../windows"
+		}
+	]
+}

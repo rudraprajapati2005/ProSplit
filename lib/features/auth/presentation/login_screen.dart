@@ -15,6 +15,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -26,7 +27,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
       await ref.read(authControllerProvider.notifier).signIn(
@@ -35,14 +39,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        setState(() {
+          _errorMessage = _getErrorMessage(e.toString());
+        });
       }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  String _getErrorMessage(String error) {
+    if (error.contains('user-not-found')) {
+      return 'No account found with this email address';
+    } else if (error.contains('wrong-password')) {
+      return 'Incorrect password';
+    } else if (error.contains('invalid-credential')) {
+      return 'Invalid email or password. Please check your credentials';
+    } else if (error.contains('invalid-email')) {
+      return 'Invalid email address';
+    } else if (error.contains('user-disabled')) {
+      return 'This account has been disabled';
+    } else if (error.contains('too-many-requests')) {
+      return 'Too many failed attempts. Please try again later';
+    } else if (error.contains('network-request-failed')) {
+      return 'Network error. Please check your connection';
+    } else {
+      return 'Login failed. Please try again';
     }
   }
 
@@ -97,7 +121,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+                
+                // Error Message Display
+                if (_errorMessage != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      border: Border.all(color: Colors.red.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline, color: Colors.red.shade600, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: TextStyle(color: Colors.red.shade700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(

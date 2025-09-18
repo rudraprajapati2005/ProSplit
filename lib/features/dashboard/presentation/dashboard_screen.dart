@@ -6,6 +6,7 @@ import '../../expenses/presentation/expenses_screen.dart';
 import '../../expenses/presentation/add_expense_screen.dart';
 import '../../groups/presentation/groups_screen.dart';
 import '../../groups/presentation/create_group_screen.dart';
+import '../../expenses/domain/expense_controller.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -184,6 +185,13 @@ class DashboardHomeScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 24),
+                Text(
+                  'Your Spend vs Share',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                const _SpendDebtGraph(),
               ],
             ),
           ),
@@ -191,6 +199,83 @@ class DashboardHomeScreen extends ConsumerWidget {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stackTrace) => Center(child: Text('Error: $error')),
+    );
+  }
+}
+
+class _SpendDebtGraph extends ConsumerWidget {
+  const _SpendDebtGraph();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authControllerProvider).value;
+    if (user == null) return const SizedBox.shrink();
+
+    final totalsAsync = ref.watch(userSpendDebtStreamProvider((userId: user.id, userName: user.name)));
+
+    return totalsAsync.when(
+      data: (totals) {
+        final maxVal = (totals.spent > totals.owes ? totals.spent : totals.owes);
+        final safeMax = maxVal <= 0 ? 1.0 : maxVal;
+
+        Widget bar(String label, double value, Color color) {
+          final fraction = (value / safeMax).clamp(0.0, 1.0);
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                SizedBox(width: 90, child: Text(label)),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      Container(
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: fraction.isNaN ? 0 : fraction,
+                        child: Container(
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 80,
+                  child: Text(
+                    value.toStringAsFixed(2),
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                bar('Spent', totals.spent, Colors.green),
+                bar('Your share', totals.owes, Colors.orange),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const Card(child: Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator())),
+      error: (e, _) => Card(child: Padding(padding: const EdgeInsets.all(16), child: Text('Error: $e'))),
     );
   }
 }

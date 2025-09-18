@@ -51,6 +51,22 @@ class GroupRepository {
     return doc.id;
   }
 
+  // Update group details (e.g., name or invites)
+  Future<void> updateGroupDetails({
+    required String groupId,
+    String? name,
+    List<String>? pendingInviteEmails,
+  }) async {
+    final doc = _groupsCol.doc(groupId);
+    final update = <String, dynamic>{};
+    if (name != null) update['name'] = name;
+    if (pendingInviteEmails != null) {
+      update['pendingInviteEmails'] = pendingInviteEmails;
+    }
+    if (update.isEmpty) return;
+    await doc.update(update).timeout(const Duration(seconds: 15));
+  }
+
   Future<void> acceptInvite({
     required String groupId,
     required String userId,

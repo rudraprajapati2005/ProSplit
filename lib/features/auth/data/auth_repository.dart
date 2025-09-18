@@ -96,4 +96,71 @@ class AuthRepository {
   Future<void> updateUserProfile(UserModel user) async {
     await _firestore.collection('users').doc(user.id).update(user.toJson());
   }
+
+  // Lightweight user search by name/email prefix and id exact/prefix.
+  Future<List<UserModel>> searchUsers(String query, {int limit = 5}) async {
+    final q = query.trim();
+    if (q.isEmpty) return [];
+
+    final List<UserModel> results = [];
+    final seen = <String>{};
+
+    // Try exact ID match first
+    try {
+      final byId = await _firestore.collection('users').doc(q).get();
+      if (byId.exists) {
+        final model = UserModel.fromJson(byId.data()!);
+        results.add(model);
+        seen.add(model.id);
+        if (results.length >= limit) return results.take(limit).toList();
+      }
+    } catch (_) {}
+
+    // Prefix range helper
+    String _endAfterPrefix(String s) {
+      if (s.isEmpty) return s;
+      final last = s.codeUnitAt(s.length - 1);
+      return s.substring(0, s.length - 1) + String.fromCharCode(last + 1);
+    }
+
+    // Search by name prefix
+    try {
+      final end = _endAfterPrefix(q);
+      final snap = await _firestore
+          .collection('users')
+          .orderBy('name')
+          .startAt([q])
+          .endBefore([end])
+          .limit(limit)
+          .get();
+      for (final d in snap.docs) {
+        if (seen.contains(d.id)) continue;
+        results.add(UserModel.fromJson(d.data()));
+        seen.add(d.id);
+        if (results.length >= limit) break;
+      }
+    } catch (_) {}
+
+    if (results.length < limit) {
+      // Search by email prefix
+      try {
+        final end = _endAfterPrefix(q);
+        final snap = await _firestore
+            .collection('users')
+            .orderBy('email')
+            .startAt([q])
+            .endBefore([end])
+            .limit(limit - results.length)
+            .get();
+        for (final d in snap.docs) {
+          if (seen.contains(d.id)) continue;
+          results.add(UserModel.fromJson(d.data()));
+          seen.add(d.id);
+          if (results.length >= limit) break;
+        }
+      } catch (_) {}
+    }
+
+    return results.take(limit).toList();
+  }
 }

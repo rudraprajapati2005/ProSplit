@@ -91,6 +91,28 @@ class GroupController extends StateNotifier<AsyncValue<List<GroupModel>>> {
   Future<GroupModel?> getGroup(String groupId) async {
     return await _repo.getGroup(groupId);
   }
+
+  // Update group (only admin)
+  Future<void> updateGroup({
+    required String groupId,
+    String? name,
+    List<String>? pendingInviteEmails,
+  }) async {
+    if (currentUserId == null) throw Exception('User not authenticated');
+
+    final groups = state.value ?? [];
+    final group = groups.firstWhere((g) => g.id == groupId, orElse: () => throw Exception('Group not found'));
+
+    if (!group.isAdmin(currentUserId!)) {
+      throw Exception('Only group admin can update group');
+    }
+
+    await _repo.updateGroupDetails(
+      groupId: groupId,
+      name: name,
+      pendingInviteEmails: pendingInviteEmails,
+    );
+  }
 }
 
 

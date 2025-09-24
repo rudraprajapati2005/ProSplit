@@ -17,6 +17,7 @@ class ExpenseModel with _$ExpenseModel {
     required DateTime date,
     required String groupId,
     @Default(false) bool isSettled,
+    @Default({}) Map<String, double> customAmounts, // userId -> custom amount
   }) = _ExpenseModel;
 
   factory ExpenseModel.fromJson(Map<String, dynamic> json) =>

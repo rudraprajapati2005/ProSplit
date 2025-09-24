@@ -25,12 +25,23 @@ final groupBalancesProvider = Provider.family<Map<String, double>, String>((ref,
       final Map<String, double> balances = {};
       for (final e in expenses) {
         if (e.isSettled) continue;
-        final perHead = e.splitBetween.isEmpty ? 0.0 : e.amount / e.splitBetween.length;
+        
         // credit payer by total amount
         balances[e.paidBy] = (balances[e.paidBy] ?? 0) + e.amount;
+        
         // debit each participant by their share
-        for (final participant in e.splitBetween) {
-          balances[participant] = (balances[participant] ?? 0) - perHead;
+        if (e.customAmounts.isNotEmpty) {
+          // Custom amounts - use the specified amounts
+          for (final participant in e.splitBetween) {
+            final customAmount = e.customAmounts[participant] ?? 0;
+            balances[participant] = (balances[participant] ?? 0) - customAmount;
+          }
+        } else {
+          // Equal split - divide equally
+          final perHead = e.splitBetween.isEmpty ? 0.0 : e.amount / e.splitBetween.length;
+          for (final participant in e.splitBetween) {
+            balances[participant] = (balances[participant] ?? 0) - perHead;
+          }
         }
       }
       // Round to 2 decimals to avoid tiny floating residues
@@ -55,8 +66,8 @@ final groupSettlementsProvider = Provider.family<List<SettlementEntry>, String>(
   final creditors = <MapEntry<String, double>>[];
   final debtors = <MapEntry<String, double>>[];
   for (final entry in balances.entries) {
-    if (entry.value > 0.005) creditors.add(MapEntry(entry.key, entry.value));
-    else if (entry.value < -0.005) debtors.add(MapEntry(entry.key, -entry.value)); // store positive owed
+    if (entry.value > 0.01) creditors.add(MapEntry(entry.key, entry.value));
+    else if (entry.value < -0.01) debtors.add(MapEntry(entry.key, -entry.value)); // store positive owed
   }
   // Sort so we consume biggest first
   creditors.sort((a, b) => b.value.compareTo(a.value));
@@ -68,17 +79,17 @@ final groupSettlementsProvider = Provider.family<List<SettlementEntry>, String>(
     final debtor = debtors[i];
     final creditor = creditors[j];
     final pay = debtor.value < creditor.value ? debtor.value : creditor.value;
-    if (pay > 0.005) {
+    if (pay > 0.01) {
       settlements.add(SettlementEntry(fromUser: debtor.key, toUser: creditor.key, amount: ((pay * 100).roundToDouble()) / 100));
     }
     final newDeb = debtor.value - pay;
     final newCred = creditor.value - pay;
-    if (newDeb <= 0.005) {
+    if (newDeb <= 0.01) {
       i++;
     } else {
       debtors[i] = MapEntry(debtor.key, newDeb);
     }
-    if (newCred <= 0.005) {
+    if (newCred <= 0.01) {
       j++;
     } else {
       creditors[j] = MapEntry(creditor.key, newCred);

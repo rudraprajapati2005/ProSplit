@@ -28,12 +28,13 @@ class GroupController extends StateNotifier<AsyncValue<List<GroupModel>>> {
     }
   }
 
-  Future<String> createGroup({required String name, required String creatorUserId, required List<String> inviteEmails}) async {
+  Future<String> createGroup({required String name, required String creatorUserId, required List<String> inviteEmails, String? creatorName}) async {
     return _repo.createGroup(
       name: name,
       createdByUserId: creatorUserId,
       initialMemberUserIds: [creatorUserId],
       inviteEmails: inviteEmails,
+      creatorName: creatorName,
     );
   }
 
@@ -92,6 +93,16 @@ class GroupController extends StateNotifier<AsyncValue<List<GroupModel>>> {
     return await _repo.getGroup(groupId);
   }
 
+  // Populate missing member names for a group
+  Future<void> populateMissingMemberNames(String groupId) async {
+    await _repo.populateMissingMemberNames(groupId);
+  }
+
+  // Migrate existing groups to the new members structure
+  Future<void> migrateGroupToNewStructure(String groupId) async {
+    await _repo.migrateGroupToNewStructure(groupId);
+  }
+
   // Update group (only admin)
   Future<void> updateGroup({
     required String groupId,
@@ -112,6 +123,19 @@ class GroupController extends StateNotifier<AsyncValue<List<GroupModel>>> {
       name: name,
       pendingInviteEmails: pendingInviteEmails,
     );
+  }
+
+  // Delete group (only owner); archives first, then deletes
+  Future<void> deleteGroup(String groupId) async {
+    if (currentUserId == null) throw Exception('User not authenticated');
+
+    final group = await _repo.getGroup(groupId);
+    if (group == null) throw Exception('Group not found');
+    if (group.createdByUserId != currentUserId) {
+      throw Exception('Only group owner can delete the group');
+    }
+
+    await _repo.deleteGroupAndExpenses(groupId: groupId);
   }
 }
 

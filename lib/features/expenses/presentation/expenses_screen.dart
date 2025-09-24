@@ -93,7 +93,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '\$${_calculateTotalExpenses(expenses).toStringAsFixed(2)}',
+                            '₹${_calculateTotalExpenses(expenses).toStringAsFixed(2)}',
                             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                               color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.bold,
@@ -121,7 +121,11 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                                 color: Colors.white,
                               ),
                             ),
-                            title: Text(expense.title),
+                            title: Text(
+                              expense.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -135,11 +139,16 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                                       color: Colors.grey[600],
                                     ),
                                     const SizedBox(width: 4),
-                                    Text(
-                                      'Paid by ${expense.paidBy}',
-                                      style: TextStyle(
-                                        color: Colors.grey[600],
-                                        fontSize: 12,
+                                    Expanded(
+                                      child: Text(
+                                        'Paid by ${_getPaidByDisplayName(expense.paidBy)}',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        softWrap: false,
                                       ),
                                     ),
                                   ],
@@ -154,18 +163,19 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                               ],
                             ),
                             trailing: Column(
+                              mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                  '\$${expense.amount.toStringAsFixed(2)}',
+                                  '₹${expense.amount.toStringAsFixed(2)}',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                   ),
                                 ),
                                 Text(
-                                  '\$${(expense.amount / expense.splitBetween.length).toStringAsFixed(2)} each',
+                                  '₹${(expense.amount / expense.splitBetween.length).toStringAsFixed(2)} each',
                                   style: TextStyle(
                                     color: Colors.grey[600],
                                     fontSize: 12,
@@ -191,6 +201,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                                   ),
                               ],
                             ),
+                            isThreeLine: true,
                             onTap: () {
                               // TODO: Navigate to expense details
                             },
@@ -240,6 +251,14 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
       final userShare = expense.amount / expense.splitBetween.length;
       return total + userShare;
     });
+  }
+
+  String _getPaidByDisplayName(String paidByUserId) {
+    final currentUser = ref.read(authControllerProvider).value;
+    if (currentUser != null && paidByUserId == currentUser.id) {
+      return 'You';
+    }
+    return paidByUserId; // For personal expenses, we don't have memberNames, so just return the ID
   }
 
   IconData _getCategoryIcon(String category) {

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/domain/auth_controller.dart';
+import '../../auth/domain/user_model.dart';
 import '../../expenses/domain/expense_controller.dart';
 import '../../expenses/domain/expense_model.dart';
 import '../../expenses/presentation/add_expense_screen.dart';
 import '../domain/group_controller.dart';
+import '../domain/member_info.dart';
+import 'group_settlements_screen.dart';
 
 class GroupExpensesScreen extends ConsumerWidget {
   final String groupId;
@@ -16,7 +19,22 @@ class GroupExpensesScreen extends ConsumerWidget {
     final currentUser = ref.watch(authControllerProvider).value;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Group Expenses')),
+      appBar: AppBar(
+        title: const Text('Group Expenses'),
+        actions: [
+          IconButton(
+            tooltip: 'Settlements',
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => GroupSettlementsScreen(groupId: groupId),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: expensesAsync.when(
         data: (expenses) {
           final groupExpenses = expenses
@@ -30,30 +48,52 @@ class GroupExpensesScreen extends ConsumerWidget {
             builder: (context, snapshot) {
               final group = snapshot.data;
               final memberNames = group?.memberNames ?? const <String, String>{};
+              final members = group?.members;
 
-              // Compute settlements keyed by display names
-              final settlements = _computeSettlements(groupExpenses, memberNames);
+              // Ensure member info is populated/migrated so names are available
+              if (group != null) {
+                if ((group.members).isEmpty && memberNames.isNotEmpty) {
+                  // Migrate legacy names to new structure in background
+                  ref.read(groupControllerProvider.notifier).migrateGroupToNewStructure(groupId);
+                }
+
+                final allMemberIds = <String>{group.createdByUserId}
+                  ..addAll(group.memberUserIds);
+                final hasIssues = allMemberIds.any((id) {
+                  if (group.members.containsKey(id)) return false;
+                  final name = memberNames[id];
+                  return name == null || name.isEmpty || name == id || name.length > 20;
+                });
+
+                if (hasIssues) {
+                  ref.read(groupControllerProvider.notifier).populateMissingMemberNames(groupId);
+                }
+              }
 
               return ListView.builder(
                 padding: const EdgeInsets.all(12),
-                itemCount: groupExpenses.length + (settlements.isNotEmpty ? 1 : 0),
+                itemCount: groupExpenses.length,
+                reverse: true, // Show most recent first
                 itemBuilder: (context, index) {
-                  // Inject settlement summary card at the top
-                  if (settlements.isNotEmpty && index == 0) {
-                    return _settlementCard(context, settlements);
-                  }
-                  final expIndex = settlements.isNotEmpty ? index - 1 : index;
-                  final expense = groupExpenses[expIndex];
-                  final isMine = expense.paidBy == (currentUser?.name ?? '');
+                  // Reverse the index to show most recent first
+                  final reversedIndex = groupExpenses.length - 1 - index;
+                  final expense = groupExpenses[reversedIndex];
+                  final isMine = expense.paidBy == (currentUser?.id ?? '');
                   final dateLabel = _formatDayLabel(expense.date);
-                  final bool showHeader = expIndex == 0 ||
-                      _formatDayLabel(groupExpenses[expIndex - 1].date) != dateLabel;
+                  final bool showHeader = index == 0 ||
+                      _formatDayLabel(groupExpenses[groupExpenses.length - index].date) != dateLabel;
 
-                  final bubble = Row(
+                  final bubble = Dismissible(
+                    key: ValueKey('exp-${expense.id}'),
+                    direction: DismissDirection.horizontal,
+                    confirmDismiss: (_) async => false, // swipe to reveal timestamp only
+                    background: _timestampBackground(context, expense.date, alignRight: false),
+                    secondaryBackground: _timestampBackground(context, expense.date, alignRight: true),
+                    child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
                     children: [
-                      if (!isMine) _avatar(expense.paidBy),
+                      if (!isMine) _avatar(_getPaidByDisplayName(expense.paidBy, currentUser, memberNames, members: members)),
                       Flexible(
                         child: Container(
                           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -87,16 +127,16 @@ class GroupExpensesScreen extends ConsumerWidget {
                                     children: [
                                       const Icon(Icons.payments, size: 16),
                                       const SizedBox(width: 4),
-                                      Text(
-                                        expense.amount.toStringAsFixed(2),
-                                        style: Theme.of(context).textTheme.titleSmall,
-                                      ),
+                                  Text(
+                                    '₹${expense.amount.toStringAsFixed(2)}',
+                                    style: Theme.of(context).textTheme.titleSmall,
+                                  ),
                                     ],
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Text('Paid by ${expense.paidBy == (currentUser?.name ?? '') ? 'You' : expense.paidBy}', style: Theme.of(context).textTheme.bodySmall),
+                              Text('Paid by ${_getPaidByDisplayName(expense.paidBy, currentUser, memberNames, members: members)}', style: Theme.of(context).textTheme.bodySmall),
                               const SizedBox(height: 4),
                               Text('Split among ${expense.splitBetween.length}', style: Theme.of(context).textTheme.bodySmall),
                               if (expense.description.isNotEmpty) ...[
@@ -107,8 +147,9 @@ class GroupExpensesScreen extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      if (isMine) _avatar(expense.paidBy),
+                      if (isMine) _avatar(_getPaidByDisplayName(expense.paidBy, currentUser, memberNames, members: members)),
                     ],
+                    ),
                   );
 
                   if (showHeader) {
@@ -116,11 +157,19 @@ class GroupExpensesScreen extends ConsumerWidget {
                       children: [
                         const SizedBox(height: 6),
                         _dateHeader(context, dateLabel),
-                        bubble,
+                        GestureDetector(
+                          onTap: () => _showExpenseDetails(context, expense, currentUser, memberNames, members: members),
+                          onLongPress: () => _showExpenseActions(context, ref, expense, groupId),
+                          child: bubble,
+                        ),
                       ],
                     );
                   }
-                  return bubble;
+                  return GestureDetector(
+                    onTap: () => _showExpenseDetails(context, expense, currentUser, memberNames, members: members),
+                    onLongPress: () => _showExpenseActions(context, ref, expense, groupId),
+                    child: bubble,
+                  );
                 },
               );
             },
@@ -170,116 +219,304 @@ String _formatDayLabel(DateTime date) {
   return '${that.day}/${that.month}/${that.year}';
 }
 
-class _SettlementLine {
-  final String from;
-  final String to;
-  final double amount;
-  _SettlementLine(this.from, this.to, this.amount);
+Widget _timestampBackground(BuildContext context, DateTime date, {required bool alignRight}) {
+  final time = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  return Container(
+    color: Theme.of(context).colorScheme.surfaceVariant,
+    alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Row(
+      mainAxisAlignment: alignRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: [
+        const Icon(Icons.schedule, size: 16),
+        const SizedBox(width: 6),
+        Text(time, style: Theme.of(context).textTheme.bodyMedium),
+      ],
+    ),
+  );
 }
 
-// Compute settlements locally based on current expense list and member name mapping.
-List<_SettlementLine> _computeSettlements(List<ExpenseModel> expenses, Map<String, String> memberNames) {
-  // Build balances keyed by display name for UI simplicity.
-  final Map<String, double> balanceByName = {};
-  for (final e in expenses) {
-    if (e.isSettled) continue;
-    final perHead = e.splitBetween.isEmpty ? 0.0 : e.amount / e.splitBetween.length;
-    // credit payer (paidBy is a name string already)
-    balanceByName[e.paidBy] = (balanceByName[e.paidBy] ?? 0) + e.amount;
-    // for each participant, we only have userIds; try to map to display names, else use id
-    for (final uid in e.splitBetween) {
-      final name = memberNames[uid] ?? uid;
-      balanceByName[name] = (balanceByName[name] ?? 0) - perHead;
-    }
-  }
+Future<void> _showExpenseActions(BuildContext context, WidgetRef ref, ExpenseModel expense, String groupId) async {
+  final user = ref.read(authControllerProvider).value;
+  if (user == null) return;
+  final group = await ref.read(groupControllerProvider.notifier).getGroup(groupId);
+  final isGroupCreator = group?.createdByUserId == user.id;
+  final isExpenseCreator = expense.paidBy == (user.name);
+  final canModify = isGroupCreator || isExpenseCreator;
+  if (!canModify) return;
 
-  final creditors = <MapEntry<String, double>>[];
-  final debtors = <MapEntry<String, double>>[];
-  balanceByName.forEach((name, bal) {
-    if (bal > 0.005) creditors.add(MapEntry(name, bal));
-    else if (bal < -0.005) debtors.add(MapEntry(name, -bal));
-  });
-  creditors.sort((a, b) => b.value.compareTo(a.value));
-  debtors.sort((a, b) => b.value.compareTo(a.value));
-
-  final result = <_SettlementLine>[];
-  int i = 0, j = 0;
-  while (i < debtors.length && j < creditors.length) {
-    final d = debtors[i];
-    final c = creditors[j];
-    final amt = d.value < c.value ? d.value : c.value;
-    if (amt > 0.005) {
-      result.add(_SettlementLine(d.key, c.key, ((amt * 100).roundToDouble()) / 100));
-    }
-    final newD = d.value - amt;
-    final newC = c.value - amt;
-    if (newD <= 0.005) {
-      i++;
-    } else {
-      debtors[i] = MapEntry(d.key, newD);
-    }
-    if (newC <= 0.005) {
-      j++;
-    } else {
-      creditors[j] = MapEntry(c.key, newC);
-    }
-  }
-  return result;
-}
-
-Widget _settlementCard(BuildContext context, List<_SettlementLine> settlements) {
-  if (settlements.isEmpty) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
+  showModalBottomSheet(
+    context: context,
+    builder: (ctx) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.balance, color: Colors.green),
-            const SizedBox(width: 8),
-            Text('All settled', style: Theme.of(context).textTheme.bodyMedium),
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Edit expense'),
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => AddExpenseScreen(initialGroupId: expense.groupId == 'personal' ? null : expense.groupId, editingExpense: expense),
+                ));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('Delete expense'),
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dctx) => AlertDialog(
+                    title: const Text('Delete expense?'),
+                    content: const Text('This action cannot be undone.'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.of(dctx).pop(false), child: const Text('Cancel')),
+                      TextButton(onPressed: () => Navigator.of(dctx).pop(true), child: const Text('Delete')),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await ref.read(expenseControllerProvider.notifier).deleteExpense(expense.id);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Expense deleted')));
+                  }
+                }
+              },
+            ),
           ],
         ),
-      ),
-    );
+      );
+    },
+  );
+}
+
+// Settlement helpers removed since settlements are shown on a dedicated screen now.
+
+String _getPaidByDisplayName(String paidByUserId, UserModel? currentUser, Map<String, String> memberNames, {Map<String, MemberInfo>? members}) {
+  if (currentUser != null && paidByUserId == currentUser.id) {
+    return 'You';
   }
-  return Card(
-    margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.account_balance_wallet, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 8),
-              Text('Settlements', style: Theme.of(context).textTheme.titleMedium),
+  // Prefer new members map
+  if (members != null && members.containsKey(paidByUserId)) {
+    final info = members[paidByUserId];
+    if (info != null && info.username.isNotEmpty) return info.username;
+  }
+  // Fallback to legacy memberNames
+  final name = memberNames[paidByUserId];
+  if (name != null && name.isNotEmpty) return name;
+  // If still not found but the id equals a value in memberNames (legacy name stored as id)
+  final reverse = memberNames.entries.firstWhere(
+    (e) => e.value == paidByUserId,
+    orElse: () => const MapEntry('', ''),
+  );
+  if (reverse.key.isNotEmpty) return paidByUserId;
+  // Shorten long Firebase UIDs
+  if (paidByUserId.length > 20) return 'User ${paidByUserId.substring(0, 8)}...';
+  return paidByUserId;
+}
+
+void _showExpenseDetails(BuildContext context, ExpenseModel expense, UserModel? currentUser, Map<String, String> memberNames, {Map<String, MemberInfo>? members}) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(expense.title),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Amount
+            _buildDetailRow(context, 'Amount', '₹${expense.amount.toStringAsFixed(2)}', Icons.payments),
+            
+            // Category
+            _buildDetailRow(context, 'Category', _getCategoryDisplayName(expense.category), _getCategoryIcon(expense.category)),
+            
+            // Paid by
+            _buildDetailRow(context, 'Paid by', _getPaidByDisplayName(expense.paidBy, currentUser, memberNames, members: members), Icons.person),
+            
+            // Date and time
+            _buildDetailRow(context, 'Date', _formatDetailedDate(expense.date), Icons.calendar_today),
+            _buildDetailRow(context, 'Time', _formatDetailedTime(expense.date), Icons.access_time),
+            
+            // Description
+            if (expense.description.isNotEmpty)
+              _buildDetailRow(context, 'Description', expense.description, Icons.description),
+            
+            const SizedBox(height: 16),
+            
+            // Split details
+            Text(
+              'Split Details',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            if (expense.customAmounts.isNotEmpty) ...[
+              // Custom amounts
+              ...expense.splitBetween.map((memberId) {
+                final memberName = _getPaidByDisplayName(memberId, currentUser, memberNames, members: members);
+                final amount = expense.customAmounts[memberId] ?? 0;
+                return _buildSplitRow(context, memberName, '₹${amount.toStringAsFixed(2)}');
+              }).toList(),
+            ] else ...[
+              // Equal split
+              ...expense.splitBetween.map((memberId) {
+                final memberName = _getPaidByDisplayName(memberId, currentUser, memberNames, members: members);
+                final amount = expense.amount / expense.splitBetween.length;
+                return _buildSplitRow(context, memberName, '₹${amount.toStringAsFixed(2)}');
+              }).toList(),
             ],
-          ),
-          const SizedBox(height: 8),
-          for (final s in settlements)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
+            
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Text(
-                      '${s.from} pays ${s.to}',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                  Text(
+                    'Total:',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   Text(
-                    s.amount.toStringAsFixed(2),
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                    '₹${expense.amount.toStringAsFixed(2)}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ],
               ),
             ),
-        ],
+          ],
+        ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
     ),
   );
+}
+
+Widget _buildDetailRow(BuildContext context, String label, String value, IconData icon) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildSplitRow(BuildContext context, String memberName, String amount) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(memberName, style: Theme.of(context).textTheme.bodyMedium),
+        Text(amount, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w500,
+        )),
+      ],
+    ),
+  );
+}
+
+String _getCategoryDisplayName(String category) {
+  switch (category) {
+    case 'food':
+      return 'Food & Dining';
+    case 'transport':
+      return 'Transportation';
+    case 'entertainment':
+      return 'Entertainment';
+    case 'utilities':
+      return 'Utilities';
+    case 'shopping':
+      return 'Shopping';
+    case 'health':
+      return 'Health & Medical';
+    case 'education':
+      return 'Education';
+    case 'other':
+      return 'Other';
+    default:
+      return category;
+  }
+}
+
+IconData _getCategoryIcon(String category) {
+  switch (category) {
+    case 'food':
+      return Icons.restaurant;
+    case 'transport':
+      return Icons.directions_car;
+    case 'entertainment':
+      return Icons.movie;
+    case 'utilities':
+      return Icons.electric_bolt;
+    case 'shopping':
+      return Icons.shopping_bag;
+    case 'health':
+      return Icons.medical_services;
+    case 'education':
+      return Icons.school;
+    case 'other':
+      return Icons.more_horiz;
+    default:
+      return Icons.category;
+  }
+}
+
+String _formatDetailedDate(DateTime date) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
+  final expenseDate = DateTime(date.year, date.month, date.day);
+  
+  if (expenseDate == today) {
+    return 'Today';
+  } else if (expenseDate == yesterday) {
+    return 'Yesterday';
+  } else {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+}
+
+String _formatDetailedTime(DateTime date) {
+  final hour = date.hour;
+  final minute = date.minute.toString().padLeft(2, '0');
+  final period = hour >= 12 ? 'PM' : 'AM';
+  final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+  return '$displayHour:$minute $period';
 }
 
 

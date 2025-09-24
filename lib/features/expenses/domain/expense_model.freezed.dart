@@ -31,6 +31,7 @@ mixin _$ExpenseModel {
   DateTime get date => throw _privateConstructorUsedError;
   String get groupId => throw _privateConstructorUsedError;
   bool get isSettled => throw _privateConstructorUsedError;
+  Map<String, double> get customAmounts => throw _privateConstructorUsedError;
 
   /// Serializes this ExpenseModel to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -60,6 +61,7 @@ abstract class $ExpenseModelCopyWith<$Res> {
     DateTime date,
     String groupId,
     bool isSettled,
+    Map<String, double> customAmounts,
   });
 }
 
@@ -88,6 +90,7 @@ class _$ExpenseModelCopyWithImpl<$Res, $Val extends ExpenseModel>
     Object? date = null,
     Object? groupId = null,
     Object? isSettled = null,
+    Object? customAmounts = null,
   }) {
     return _then(
       _value.copyWith(
@@ -131,6 +134,10 @@ class _$ExpenseModelCopyWithImpl<$Res, $Val extends ExpenseModel>
                 ? _value.isSettled
                 : isSettled // ignore: cast_nullable_to_non_nullable
                       as bool,
+            customAmounts: null == customAmounts
+                ? _value.customAmounts
+                : customAmounts // ignore: cast_nullable_to_non_nullable
+                      as Map<String, double>,
           )
           as $Val,
     );
@@ -157,6 +164,7 @@ abstract class _$$ExpenseModelImplCopyWith<$Res>
     DateTime date,
     String groupId,
     bool isSettled,
+    Map<String, double> customAmounts,
   });
 }
 
@@ -184,6 +192,7 @@ class __$$ExpenseModelImplCopyWithImpl<$Res>
     Object? date = null,
     Object? groupId = null,
     Object? isSettled = null,
+    Object? customAmounts = null,
   }) {
     return _then(
       _$ExpenseModelImpl(
@@ -227,6 +236,10 @@ class __$$ExpenseModelImplCopyWithImpl<$Res>
             ? _value.isSettled
             : isSettled // ignore: cast_nullable_to_non_nullable
                   as bool,
+        customAmounts: null == customAmounts
+            ? _value._customAmounts
+            : customAmounts // ignore: cast_nullable_to_non_nullable
+                  as Map<String, double>,
       ),
     );
   }
@@ -246,7 +259,9 @@ class _$ExpenseModelImpl implements _ExpenseModel {
     required this.date,
     required this.groupId,
     this.isSettled = false,
-  }) : _splitBetween = splitBetween;
+    final Map<String, double> customAmounts = const {},
+  }) : _splitBetween = splitBetween,
+       _customAmounts = customAmounts;
 
   factory _$ExpenseModelImpl.fromJson(Map<String, dynamic> json) =>
       _$$ExpenseModelImplFromJson(json);
@@ -278,10 +293,18 @@ class _$ExpenseModelImpl implements _ExpenseModel {
   @override
   @JsonKey()
   final bool isSettled;
+  final Map<String, double> _customAmounts;
+  @override
+  @JsonKey()
+  Map<String, double> get customAmounts {
+    if (_customAmounts is EqualUnmodifiableMapView) return _customAmounts;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(_customAmounts);
+  }
 
   @override
   String toString() {
-    return 'ExpenseModel(id: $id, title: $title, amount: $amount, category: $category, description: $description, paidBy: $paidBy, splitBetween: $splitBetween, date: $date, groupId: $groupId, isSettled: $isSettled)';
+    return 'ExpenseModel(id: $id, title: $title, amount: $amount, category: $category, description: $description, paidBy: $paidBy, splitBetween: $splitBetween, date: $date, groupId: $groupId, isSettled: $isSettled, customAmounts: $customAmounts)';
   }
 
   @override
@@ -304,7 +327,11 @@ class _$ExpenseModelImpl implements _ExpenseModel {
             (identical(other.date, date) || other.date == date) &&
             (identical(other.groupId, groupId) || other.groupId == groupId) &&
             (identical(other.isSettled, isSettled) ||
-                other.isSettled == isSettled));
+                other.isSettled == isSettled) &&
+            const DeepCollectionEquality().equals(
+              other._customAmounts,
+              _customAmounts,
+            ));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -321,6 +348,7 @@ class _$ExpenseModelImpl implements _ExpenseModel {
     date,
     groupId,
     isSettled,
+    const DeepCollectionEquality().hash(_customAmounts),
   );
 
   /// Create a copy of ExpenseModel
@@ -349,6 +377,7 @@ abstract class _ExpenseModel implements ExpenseModel {
     required final DateTime date,
     required final String groupId,
     final bool isSettled,
+    final Map<String, double> customAmounts,
   }) = _$ExpenseModelImpl;
 
   factory _ExpenseModel.fromJson(Map<String, dynamic> json) =
@@ -374,6 +403,8 @@ abstract class _ExpenseModel implements ExpenseModel {
   String get groupId;
   @override
   bool get isSettled;
+  @override
+  Map<String, double> get customAmounts;
 
   /// Create a copy of ExpenseModel
   /// with the given fields replaced by the non-null parameter values.

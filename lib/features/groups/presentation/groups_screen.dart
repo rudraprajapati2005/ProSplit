@@ -76,6 +76,59 @@ class GroupsScreen extends ConsumerWidget {
                         ),
                       );
                     },
+                    onLongPress: isAdmin
+                        ? () async {
+                            final textController = TextEditingController();
+                            final proceed = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Are you sure you want to delete group?'),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('This will archive the group and delete all its expenses.'),
+                                    const SizedBox(height: 8),
+                                    const Text('Type "confirm" to proceed:'),
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: textController,
+                                      autofocus: true,
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        hintText: 'confirm',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                                  TextButton(
+                                    onPressed: () {
+                                      if (textController.text.trim().toLowerCase() == 'confirm') {
+                                        Navigator.of(ctx).pop(true);
+                                      }
+                                    },
+                                    style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (proceed == true) {
+                              try {
+                                await ref.read(groupControllerProvider.notifier).deleteGroup(g.id);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Group deleted')));
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete group: $e')));
+                                }
+                              }
+                            }
+                          }
+                        : null,
                   );
                 },
               );
@@ -101,9 +154,9 @@ class GroupsScreen extends ConsumerWidget {
 
 Future<void> _showAddMemberDialog(BuildContext context, WidgetRef ref, String groupId) async {
   final searchController = TextEditingController();
-  final userNameController = TextEditingController();
-  String? selectedUserId;
   List<_UserSuggestion> suggestions = [];
+  Set<String> selectedUserIds = {};
+  Map<String, String> selectedUserNames = {};
   bool isSearching = false;
 
   await showDialog(
@@ -124,17 +177,33 @@ Future<void> _showAddMemberDialog(BuildContext context, WidgetRef ref, String gr
             setState(() { isSearching = false; });
           }
         }
+
+        void toggleUser(_UserSuggestion user) {
+          setState(() {
+            if (selectedUserIds.contains(user.id)) {
+              selectedUserIds.remove(user.id);
+              selectedUserNames.remove(user.id);
+            } else {
+              selectedUserIds.add(user.id);
+              selectedUserNames[user.id] = user.label.split(' • ').first;
+            }
+          });
+        }
+
         return AlertDialog(
-          title: const Text('Add Member'),
+          title: const Text('Add Members'),
           content: SingleChildScrollView(
             child: SizedBox(
-              width: 400,
+              width: 450,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     controller: searchController,
-                    decoration: const InputDecoration(labelText: 'Search by name, email or ID'),
+                    decoration: const InputDecoration(
+                      labelText: 'Search by name, email or ID',
+                      prefixIcon: Icon(Icons.search),
+                    ),
                     autofocus: true,
                     onChanged: (v) {
                       if (v.trim().length >= 2) {
@@ -144,72 +213,87 @@ Future<void> _showAddMemberDialog(BuildContext context, WidgetRef ref, String gr
                       }
                     },
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
+                  
+                  // Selected members
+                  if (selectedUserIds.isNotEmpty) ...[
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Selected Members:', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: selectedUserIds.map((userId) {
+                        final name = selectedUserNames[userId] ?? 'Unknown';
+                        return Chip(
+                          label: Text(name),
+                          deleteIcon: const Icon(Icons.close, size: 18),
+                          onDeleted: () => toggleUser(_UserSuggestion(id: userId, label: name)),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  
+                  // Search results
                   SizedBox(
-                    height: 140,
+                    height: 200,
                     child: isSearching
                         ? const Center(child: CircularProgressIndicator())
-                        : ListView.builder(
-                            itemCount: suggestions.length,
-                            itemBuilder: (c, i) {
-                              final s = suggestions[i];
-                              final selected = s.id == selectedUserId;
-                              return ListTile(
-                                dense: true,
-                                title: Text(s.label),
-                                trailing: selected ? const Icon(Icons.check_circle, color: Colors.green) : null,
-                                onTap: () {
-                                  selectedUserId = s.id;
-                                  userNameController.text = s.label.split(' • ').first;
-                                  setState(() {});
+                        : suggestions.isEmpty
+                            ? const Center(child: Text('No users found'))
+                            : ListView.builder(
+                                itemCount: suggestions.length,
+                                itemBuilder: (c, i) {
+                                  final s = suggestions[i];
+                                  final isSelected = selectedUserIds.contains(s.id);
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(s.label),
+                                    leading: Checkbox(
+                                      value: isSelected,
+                                      onChanged: (_) => toggleUser(s),
+                                    ),
+                                    onTap: () => toggleUser(s),
+                                  );
                                 },
-                              );
-                            },
-                          ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: userNameController,
-                    decoration: const InputDecoration(labelText: 'User name'),
+                              ),
                   ),
                 ],
               ),
             ),
           ),
           actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final userId = selectedUserId ?? searchController.text.trim();
-              final userName = userNameController.text.trim();
-              if (userId.isEmpty || userName.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter both User ID and User name')),
-                );
-                return;
-              }
-              try {
-                await ref.read(groupControllerProvider.notifier)
-                    .addMemberToGroup(groupId, userId, userName);
-                if (context.mounted) {
-                  Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Member added')),
-                  );
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedUserIds.isEmpty ? null : () async {
+                try {
+                  for (final userId in selectedUserIds) {
+                    final userName = selectedUserNames[userId] ?? 'Unknown User';
+                    await ref.read(groupControllerProvider.notifier)
+                        .addMemberToGroup(groupId, userId, userName);
+                  }
+                  if (context.mounted) {
+                    Navigator.of(ctx).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${selectedUserIds.length} member(s) added')),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to add members: $e')),
+                    );
+                  }
                 }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to add member: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Add'),
-          ),
+              },
+              child: Text('Add ${selectedUserIds.length} Member(s)'),
+            ),
           ],
         );
       });

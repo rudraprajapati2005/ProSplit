@@ -64,6 +64,69 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Group Details'),
+        actions: [
+          if (isAdmin && _group != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete group',
+              onPressed: () async {
+                final textController = TextEditingController();
+                final proceed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Are you sure you want to delete group?'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('This will archive the group and delete all its expenses.'),
+                        const SizedBox(height: 8),
+                        const Text('Type "confirm" to proceed:'),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: textController,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            hintText: 'confirm',
+                          ),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                      TextButton(
+                        onPressed: () {
+                          if (textController.text.trim().toLowerCase() == 'confirm') {
+                            Navigator.of(ctx).pop(true);
+                          }
+                        },
+                        style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                    contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                    actionsPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                );
+                if (proceed != true) return;
+                setState(() => _saving = true);
+                try {
+                  await ref.read(groupControllerProvider.notifier).deleteGroup(widget.groupId);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Group deleted')));
+                    Navigator.of(context).pop();
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete group: $e')));
+                  }
+                } finally {
+                  if (mounted) setState(() => _saving = false);
+                }
+              },
+            )
+        ],
       ),
       body: _group == null
           ? const Center(child: CircularProgressIndicator())
@@ -93,10 +156,11 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
                       itemBuilder: (context, index) {
                         final id = _group!.memberUserIds[index];
                         final canRemove = isAdmin && id != _group!.createdByUserId;
+                        final isCurrentUser = user != null && id == user.id;
                         return ListTile(
                           leading: const Icon(Icons.person),
-                          title: Text(_group!.getMemberName(id)),
-                          subtitle: Text(id),
+                          title: Text(isCurrentUser ? 'You' : _group!.getMemberName(id)),
+                          subtitle: isCurrentUser ? const Text('You') : null,
                           trailing: canRemove
                               ? IconButton(
                                   icon: const Icon(Icons.person_remove, color: Colors.redAccent),
@@ -106,7 +170,7 @@ class _GroupDetailsScreenState extends ConsumerState<GroupDetailsScreen> {
                                       context: context,
                                       builder: (ctx) => AlertDialog(
                                         title: const Text('Remove member'),
-                                        content: Text('Remove ${_group!.getMemberName(id)} from the group?'),
+                                        content: Text('Remove ${isCurrentUser ? 'You' : _group!.getMemberName(id)} from the group?'),
                                         actions: [
                                           TextButton(
                                             onPressed: () => Navigator.of(ctx).pop(false),

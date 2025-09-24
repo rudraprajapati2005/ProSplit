@@ -7,6 +7,7 @@ import 'package:first_project/core/theme/app_theme.dart';
 import 'package:first_project/features/auth/domain/auth_controller.dart';
 import 'package:first_project/features/auth/presentation/login_screen.dart';
 import 'package:first_project/features/dashboard/presentation/dashboard_screen.dart';
+import 'notifications/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +18,7 @@ void main() async {
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
+  await NotificationService.instance.init();
   
   runApp(const ProviderScope(child: MyApp()));
 }

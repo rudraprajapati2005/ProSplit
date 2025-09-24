@@ -6,6 +6,7 @@ import '../../expenses/presentation/expenses_screen.dart';
 import '../../expenses/presentation/add_expense_screen.dart';
 import '../../groups/presentation/groups_screen.dart';
 import '../../groups/presentation/create_group_screen.dart';
+import 'analysis_screen.dart';
 import '../../expenses/domain/expense_controller.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -183,6 +184,34 @@ class DashboardHomeScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Card(
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const AnalysisScreen(),
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.analytics_outlined,
+                                  size: 32,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(height: 8),
+                                const Text('Analysis'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -251,7 +280,7 @@ class _SpendDebtGraph extends ConsumerWidget {
                 SizedBox(
                   width: 80,
                   child: Text(
-                    value.toStringAsFixed(2),
+                    '₹${value.toStringAsFixed(2)}',
                     textAlign: TextAlign.end,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),

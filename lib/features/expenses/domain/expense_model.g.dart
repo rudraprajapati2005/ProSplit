@@ -20,6 +20,11 @@ _$ExpenseModelImpl _$$ExpenseModelImplFromJson(Map<String, dynamic> json) =>
       date: DateTime.parse(json['date'] as String),
       groupId: json['groupId'] as String,
       isSettled: json['isSettled'] as bool? ?? false,
+      customAmounts:
+          (json['customAmounts'] as Map<String, dynamic>?)?.map(
+            (k, e) => MapEntry(k, (e as num).toDouble()),
+          ) ??
+          const {},
     );
 
 Map<String, dynamic> _$$ExpenseModelImplToJson(_$ExpenseModelImpl instance) =>
@@ -34,4 +39,5 @@ Map<String, dynamic> _$$ExpenseModelImplToJson(_$ExpenseModelImpl instance) =>
       'date': instance.date.toIso8601String(),
       'groupId': instance.groupId,
       'isSettled': instance.isSettled,
+      'customAmounts': instance.customAmounts,
     };

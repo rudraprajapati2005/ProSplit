@@ -106,5 +106,22 @@ class ExpenseRepository {
 
     return stats;
   }
+
+  // Update all expenses where a user is the payer (when user changes name)
+  Future<void> updateExpensesPaidBy(String oldName, String newName) async {
+    final snapshot = await _firestore
+        .collection('expenses')
+        .where('paidBy', isEqualTo: oldName)
+        .get();
+
+    final batch = _firestore.batch();
+    for (final doc in snapshot.docs) {
+      batch.update(doc.reference, {'paidBy': newName});
+    }
+    
+    if (snapshot.docs.isNotEmpty) {
+      await batch.commit();
+    }
+  }
 }
 

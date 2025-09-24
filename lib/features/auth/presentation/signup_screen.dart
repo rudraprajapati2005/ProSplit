@@ -55,19 +55,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     }
   }
 
-  String _getErrorMessage(String error) {
-    if (error.contains('email-already-in-use')) {
+  String _getErrorMessage(dynamic error) {
+    String errorString = error.toString();
+    
+    if (errorString.contains('email-already-in-use')) {
       return 'An account already exists with this email address';
-    } else if (error.contains('invalid-email')) {
+    } else if (errorString.contains('invalid-email')) {
       return 'Invalid email address';
-    } else if (error.contains('weak-password')) {
+    } else if (errorString.contains('weak-password')) {
       return 'Password is too weak. Please choose a stronger password';
-    } else if (error.contains('operation-not-allowed')) {
+    } else if (errorString.contains('operation-not-allowed')) {
       return 'Email/password accounts are not enabled';
-    } else if (error.contains('network-request-failed')) {
+    } else if (errorString.contains('network-request-failed')) {
       return 'Network error. Please check your connection';
-    } else if (error.contains('too-many-requests')) {
+    } else if (errorString.contains('too-many-requests')) {
       return 'Too many attempts. Please try again later';
+    } else if (errorString.contains('unknown-error')) {
+      return 'An unexpected error occurred. Please try again';
     } else {
       return 'Sign up failed. Please try again';
     }

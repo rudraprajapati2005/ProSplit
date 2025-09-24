@@ -32,9 +32,9 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   Future<void> _loadUserEmails() async {
     try {
       final snapshot = await FirebaseFirestore.instance
-          .collection('users')
+          .collection('user_directory')
           .get();
-      
+      if (!mounted) return;
       setState(() {
         _allUserEmails = snapshot.docs
             .map((doc) => doc.data()['email'] as String? ?? '')
@@ -43,14 +43,11 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
         _isLoadingEmails = false;
       });
     } catch (e) {
-      setState(() {
-        _isLoadingEmails = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading users: $e')),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _isLoadingEmails = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading users: $e')),
+      );
     }
   }
 
@@ -68,15 +65,37 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
       setState(() => _suggestedEmails = []);
       return;
     }
-    
-    setState(() {
-      _suggestedEmails = _allUserEmails
-          .where((email) => 
-              email.toLowerCase().contains(query) && 
-              !_invitedEmails.contains(email))
-          .take(5)
-          .toList();
-    });
+
+    // If we have a preloaded list, filter locally; otherwise query by prefix
+    if (_allUserEmails.isNotEmpty) {
+      setState(() {
+        _suggestedEmails = _allUserEmails
+            .where((email) =>
+                email.toLowerCase().contains(query) &&
+                !_invitedEmails.contains(email))
+            .take(5)
+            .toList();
+      });
+    } else {
+      // Query Firestore for prefix match on emailLower
+      FirebaseFirestore.instance
+          .collection('user_directory')
+          .where('emailLower', isGreaterThanOrEqualTo: query)
+          .where('emailLower', isLessThan: query + '\uf8ff')
+          .limit(5)
+          .get()
+          .then((snap) {
+        final results = snap.docs
+            .map((d) => d.data()['email'] as String? ?? '')
+            .where((e) => e.isNotEmpty && !_invitedEmails.contains(e))
+            .toList();
+        if (mounted) {
+          setState(() => _suggestedEmails = results);
+        }
+      }).catchError((_) {
+        if (mounted) setState(() => _suggestedEmails = []);
+      });
+    }
   }
 
   void _addEmail(String email) {
@@ -113,6 +132,7 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
             name: _nameController.text.trim(),
             creatorUserId: user.id,
             inviteEmails: _invitedEmails,
+            creatorName: user.name,
           );
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -133,13 +153,18 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Create Group')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
               // Group Name Field
               TextFormField(
                 controller: _nameController,
@@ -210,19 +235,21 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                         border: Border.all(color: Colors.grey.shade300),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _suggestedEmails.length,
-                        itemBuilder: (context, index) {
-                          final email = _suggestedEmails[index];
-                          return ListTile(
-                            dense: true,
-                            leading: const Icon(Icons.person_add, size: 20),
-                            title: Text(email),
-                            onTap: () => _addEmail(email),
-                          );
-                        },
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 240),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _suggestedEmails.length,
+                          itemBuilder: (context, index) {
+                            final email = _suggestedEmails[index];
+                            return ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.person_add, size: 20),
+                              title: Text(email),
+                              onTap: () => _addEmail(email),
+                            );
+                          },
+                        ),
                       ),
                     )
                   else if (_emailController.text.isNotEmpty && _suggestedEmails.isEmpty && !_isLoadingEmails)
@@ -262,11 +289,14 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
-
-              const Spacer(),
-              
-              // Create Group Button
-              SizedBox(
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _isLoading ? null : _create,
@@ -279,8 +309,8 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                       : const Text('Create Group'),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

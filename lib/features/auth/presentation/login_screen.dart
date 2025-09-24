@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/auth_controller.dart';
 import 'signup_screen.dart';
@@ -40,8 +41,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = _getErrorMessage(e.toString());
+          _errorMessage = _mapAuthError(e);
         });
+        if (_errorMessage != null && _errorMessage!.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_errorMessage!)),
+          );
+        }
       }
     } finally {
       if (mounted) {
@@ -50,21 +56,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  String _getErrorMessage(String error) {
-    if (error.contains('user-not-found')) {
+  String _mapAuthError(Object error) {
+    if (error is FirebaseAuthException) {
+      final code = error.code.toLowerCase();
+      switch (code) {
+        case 'user-not-found':
+          return 'No account found with this email address';
+        case 'wrong-password':
+          return 'Incorrect password';
+        case 'invalid-credential':
+          return 'Invalid email or password. Please check your credentials';
+        case 'invalid-email':
+          return 'Invalid email address';
+        case 'user-disabled':
+          return 'This account has been disabled';
+        case 'too-many-requests':
+          return 'Too many failed attempts. Please try again later';
+        case 'network-request-failed':
+          return 'Network error. Please check your connection';
+        default:
+          return 'Login failed (${error.code}). Please try again';
+      }
+    }
+    final errorString = error.toString();
+    if (errorString.contains('user-not-found')) {
       return 'No account found with this email address';
-    } else if (error.contains('wrong-password')) {
+    } else if (errorString.contains('wrong-password')) {
       return 'Incorrect password';
-    } else if (error.contains('invalid-credential')) {
+    } else if (errorString.contains('invalid-credential')) {
       return 'Invalid email or password. Please check your credentials';
-    } else if (error.contains('invalid-email')) {
+    } else if (errorString.contains('invalid-email')) {
       return 'Invalid email address';
-    } else if (error.contains('user-disabled')) {
+    } else if (errorString.contains('user-disabled')) {
       return 'This account has been disabled';
-    } else if (error.contains('too-many-requests')) {
+    } else if (errorString.contains('too-many-requests')) {
       return 'Too many failed attempts. Please try again later';
-    } else if (error.contains('network-request-failed')) {
+    } else if (errorString.contains('network-request-failed')) {
       return 'Network error. Please check your connection';
+    } else if (errorString.contains('unknown-error')) {
+      return 'An unexpected error occurred. Please try again';
     } else {
       return 'Login failed. Please try again';
     }
@@ -122,33 +152,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                
-                // Error Message Display
-                if (_errorMessage != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      border: Border.all(color: Colors.red.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.error_outline, color: Colors.red.shade600, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _errorMessage!,
-                            style: TextStyle(color: Colors.red.shade700),
+                // Error Message Display (always reserved space to avoid jumps)
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: (_errorMessage != null && _errorMessage!.isNotEmpty)
+                      ? Container(
+                          key: const ValueKey('error-banner'),
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            border: Border.all(color: Colors.red.shade200),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
+                          child: Row(
+                            children: [
+                              Icon(Icons.error_outline, color: Colors.red.shade600, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: TextStyle(color: Colors.red.shade700),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox(height: 0, key: ValueKey('no-error')),
+                ),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(

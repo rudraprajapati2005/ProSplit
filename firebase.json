@@ -1,8 +1,32 @@
-{"flutter":
-{"platforms":
-{"android":
-{"default":
-{"projectId":"prosplit-app",
-"appId":"1:876629588496:android:6d643c8c40ac878cc92895",
-"fileOutput":"android/app/google-services.json"}},
-"dart":{"lib/firebase_options.dart":{"projectId":"prosplit-app","configurations":{"android":"1:876629588496:android:6d643c8c40ac878cc92895","ios":"1:876629588496:ios:1400c1af0aff3a5fc92895","macos":"1:876629588496:ios:1400c1af0aff3a5fc92895","web":"1:876629588496:web:c22667919fe7089ec92895","windows":"1:876629588496:web:bb56faa8942465a6c92895"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": {
+    "source": "functions"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "prosplit-app",
+          "appId": "1:876629588496:android:6d643c8c40ac878cc92895",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "prosplit-app",
+          "configurations": {
+            "android": "1:876629588496:android:6d643c8c40ac878cc92895",
+            "ios": "1:876629588496:ios:1400c1af0aff3a5fc92895",
+            "macos": "1:876629588496:ios:1400c1af0aff3a5fc92895",
+            "web": "1:876629588496:web:c22667919fe7089ec92895",
+            "windows": "1:876629588496:web:bb56faa8942465a6c92895"
+          }
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,8 @@ import '../domain/expense_model.dart';
 
 class AddExpenseScreen extends ConsumerStatefulWidget {
   final String? initialGroupId; // If provided, lock to this group context
-  const AddExpenseScreen({super.key, this.initialGroupId});
+  final ExpenseModel? editingExpense; // If provided, screen works in edit mode
+  const AddExpenseScreen({super.key, this.initialGroupId, this.editingExpense});
 
   @override
   ConsumerState<AddExpenseScreen> createState() => _AddExpenseScreenState();
@@ -26,6 +27,29 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
   String? _selectedGroupId; // null for personal
   Set<String> _selectedMemberIds = {};
   bool _customSplit = false; // false = equal, true = custom subset
+  bool _equalSplit = true; // true = equal split, false = unequal split (only when customSplit is true)
+  Map<String, double> _customAmounts = {}; // userId -> custom amount
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.editingExpense;
+    if (e != null) {
+      _titleController.text = e.title;
+      _amountController.text = e.amount.toStringAsFixed(2);
+      _descriptionController.text = e.description;
+      _selectedCategory = ExpenseCategory.values.firstWhere(
+        (c) => c.name == e.category,
+        orElse: () => ExpenseCategory.other,
+      );
+      _selectedDate = e.date;
+      _selectedGroupId = e.groupId == 'personal' ? null : e.groupId;
+      _customSplit = true;
+      _selectedMemberIds = e.splitBetween.toSet();
+      _customAmounts = Map<String, double>.from(e.customAmounts);
+      _equalSplit = e.customAmounts.isEmpty; // If no custom amounts, it was equal split
+    }
+  }
 
   @override
   void dispose() {
@@ -49,7 +73,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
     }
   }
 
-  Future<void> _addExpense() async {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -60,14 +84,17 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
 
       final amount = double.parse(_amountController.text);
       
-      // Determine split members (equal or custom subset)
+      // Determine split members and custom amounts
       List<String> splitBetween;
+      Map<String, double> customAmounts = {};
       final effectiveGroupId = widget.initialGroupId ?? _selectedGroupId;
+      
       if (effectiveGroupId == null) {
         splitBetween = [user.id];
       } else {
         final group = await ref.read(groupControllerProvider.notifier).getGroup(effectiveGroupId);
         final allMembers = group == null ? <String>[user.id] : group.allMemberIds;
+        
         if (_customSplit) {
           if (_selectedMemberIds.isEmpty) {
             if (mounted) {
@@ -78,30 +105,73 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
             return;
           }
           splitBetween = _selectedMemberIds.toList();
+          
+          // Handle unequal split
+          if (!_equalSplit) {
+            // Validate custom amounts
+            double totalCustomAmount = 0;
+            for (final memberId in splitBetween) {
+              final amount = _customAmounts[memberId] ?? 0;
+              if (amount <= 0) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter valid amounts for all selected members')),
+                  );
+                }
+                return;
+              }
+              totalCustomAmount += amount;
+              customAmounts[memberId] = amount;
+            }
+            
+            // Validate total matches expense amount
+            if ((totalCustomAmount - amount).abs() > 0.01) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Total custom amounts (₹${totalCustomAmount.toStringAsFixed(2)}) must equal expense amount (₹${amount.toStringAsFixed(2)})')),
+                );
+              }
+              return;
+            }
+          }
         } else {
           splitBetween = allMembers;
         }
         if (splitBetween.isEmpty) splitBetween = [user.id];
       }
 
-      final expense = ExpenseModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: _titleController.text.trim(),
-        amount: amount,
-        category: _selectedCategory.name,
-        description: _descriptionController.text.trim(),
-        paidBy: user.name,
-        splitBetween: splitBetween,
-        date: _selectedDate,
-        groupId: effectiveGroupId ?? 'personal',
-        isSettled: false,
-      );
-
-      await ref.read(expenseControllerProvider.notifier).addExpense(expense);
+      if (widget.editingExpense == null) {
+        final expense = ExpenseModel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: _titleController.text.trim(),
+          amount: amount,
+          category: _selectedCategory.name,
+          description: _descriptionController.text.trim(),
+          paidBy: user.id, // Store user ID instead of name for consistency
+          splitBetween: splitBetween,
+          date: _selectedDate,
+          groupId: effectiveGroupId ?? 'personal',
+          isSettled: false,
+          customAmounts: customAmounts,
+        );
+        await ref.read(expenseControllerProvider.notifier).addExpense(expense);
+      } else {
+        final updated = widget.editingExpense!.copyWith(
+          title: _titleController.text.trim(),
+          amount: amount,
+          category: _selectedCategory.name,
+          description: _descriptionController.text.trim(),
+          splitBetween: splitBetween,
+          date: _selectedDate,
+          groupId: effectiveGroupId ?? 'personal',
+          customAmounts: customAmounts,
+        );
+        await ref.read(expenseControllerProvider.notifier).updateExpense(updated);
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Expense added successfully!')),
+          SnackBar(content: Text(widget.editingExpense == null ? 'Expense added successfully!' : 'Expense updated')),
         );
         Navigator.of(context).pop();
       }
@@ -179,59 +249,195 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
                                     ButtonSegment(value: true, label: Text('Custom')),
                                   ],
                                   selected: {_customSplit},
-                                  onSelectionChanged: (s) => setState(() => _customSplit = s.first),
+                                  onSelectionChanged: (s) {
+                                    setState(() {
+                                      _customSplit = s.first;
+                                      if (!_customSplit) {
+                                        // Reset to equal split mode
+                                        _selectedMemberIds = members.toSet();
+                                        _customAmounts.clear();
+                                        _equalSplit = true;
+                                      }
+                                    });
+                                  },
                                 ),
                                 const SizedBox(height: 10),
-                                Wrap(
-                                  spacing: 8,
-                                  children: members.map((id) {
-                                    final name = group.getMemberName(id);
-                                    final selected = _customSplit
-                                        ? _selectedMemberIds.contains(id)
-                                        : true; // equal mode shows all as selected
-                                    return FilterChip(
-                                      label: Text(name),
-                                      selected: selected,
-                                      onSelected: _customSplit
-                                          ? (val) {
-                                              setState(() {
-                                                if (val) {
-                                                  _selectedMemberIds.add(id);
-                                                } else {
-                                                  _selectedMemberIds.remove(id);
-                                                }
-                                              });
+                                
+                                // Equal split mode
+                                if (!_customSplit) ...[
+                                  Wrap(
+                                    spacing: 8,
+                                    children: members.map((id) {
+                                      final isCurrentUser = auth != null && id == auth.id;
+                                      final name = isCurrentUser ? 'You' : group.getMemberName(id);
+                                      return FilterChip(
+                                        label: Text(name),
+                                        selected: true,
+                                        onSelected: null, // Cannot deselect in equal mode
+                                      );
+                                    }).toList(),
+                                  ),
+                                ] else ...[
+                                  // Custom split mode
+                                  // Equal/Unequal toggle
+                                  SegmentedButton<bool>(
+                                    segments: const [
+                                      ButtonSegment(value: true, label: Text('Equal')),
+                                      ButtonSegment(value: false, label: Text('Unequal')),
+                                    ],
+                                    selected: {_equalSplit},
+                                    onSelectionChanged: (s) {
+                                      setState(() {
+                                        _equalSplit = s.first;
+                                        if (_equalSplit) {
+                                          _customAmounts.clear();
+                                        } else {
+                                          // Initialize custom amounts for selected members
+                                          for (final id in _selectedMemberIds) {
+                                            if (!_customAmounts.containsKey(id)) {
+                                              _customAmounts[id] = 0;
                                             }
-                                          : null,
-                                    );
-                                  }).toList(),
-                                ),
-                                const SizedBox(height: 8),
-                                if (_customSplit)
+                                          }
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 10),
+                                  
+                                  // Member selection
+                                  Wrap(
+                                    spacing: 8,
+                                    children: members.map((id) {
+                                      final isCurrentUser = auth != null && id == auth.id;
+                                      final name = isCurrentUser ? 'You' : group.getMemberName(id);
+                                      final selected = _selectedMemberIds.contains(id);
+                                      return FilterChip(
+                                        label: Text(name),
+                                        selected: selected,
+                                        onSelected: (val) {
+                                          setState(() {
+                                            if (val) {
+                                              _selectedMemberIds.add(id);
+                                              if (!_equalSplit) {
+                                                _customAmounts[id] = 0;
+                                              }
+                                            } else {
+                                              _selectedMemberIds.remove(id);
+                                              _customAmounts.remove(id);
+                                            }
+                                          });
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  
+                                  // Quick selection buttons
                                   Row(
                                     children: [
                                       TextButton(
                                         onPressed: () {
-                                          setState(() => _selectedMemberIds = members.toSet());
+                                          setState(() {
+                                            _selectedMemberIds = members.toSet();
+                                            if (!_equalSplit) {
+                                              for (final id in members) {
+                                                _customAmounts[id] = _customAmounts[id] ?? 0;
+                                              }
+                                            }
+                                          });
                                         },
                                         child: const Text('Select all'),
                                       ),
                                       const SizedBox(width: 8),
                                       TextButton(
                                         onPressed: () {
-                                          setState(() => _selectedMemberIds = {auth?.id ?? ''});
+                                          setState(() {
+                                            _selectedMemberIds = {auth?.id ?? ''};
+                                            if (!_equalSplit) {
+                                              _customAmounts.clear();
+                                              _customAmounts[auth?.id ?? ''] = 0;
+                                            }
+                                          });
                                         },
                                         child: const Text('Only me'),
                                       ),
                                       const SizedBox(width: 8),
                                       TextButton(
                                         onPressed: () {
-                                          setState(() => _selectedMemberIds.remove(auth?.id ?? ''));
+                                          setState(() {
+                                            _selectedMemberIds.remove(auth?.id ?? '');
+                                            _customAmounts.remove(auth?.id ?? '');
+                                          });
                                         },
                                         child: const Text('Exclude me'),
                                       ),
                                     ],
-                                  )
+                                  ),
+                                  
+                                  // Custom amount inputs for unequal split
+                                  if (!_equalSplit && _selectedMemberIds.isNotEmpty) ...[
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Enter amounts for each member:',
+                                      style: Theme.of(context).textTheme.titleSmall,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ..._selectedMemberIds.map((id) {
+                                      final isCurrentUser = auth != null && id == auth.id;
+                                      final name = isCurrentUser ? 'You' : group.getMemberName(id);
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: TextFormField(
+                                          initialValue: _customAmounts[id]?.toString() ?? '',
+                                          decoration: InputDecoration(
+                                            labelText: '$name (₹)',
+                                            border: const OutlineInputBorder(),
+                                            prefixText: '₹ ',
+                                          ),
+                                          keyboardType: TextInputType.number,
+                                          onChanged: (value) {
+                                            final amount = double.tryParse(value) ?? 0;
+                                            _customAmounts[id] = amount;
+                                          },
+                                          validator: (value) {
+                                            if (!_equalSplit && _selectedMemberIds.contains(id)) {
+                                              final amount = double.tryParse(value ?? '');
+                                              if (amount == null || amount <= 0) {
+                                                return 'Enter valid amount';
+                                              }
+                                            }
+                                            return null;
+                                          },
+                                        ),
+                                      );
+                                    }).toList(),
+                                    
+                                    // Total validation display
+                                    if (_customAmounts.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).colorScheme.surfaceVariant,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text('Total:'),
+                                            Text(
+                                              '₹${_customAmounts.values.fold(0.0, (sum, amount) => sum + amount).toStringAsFixed(2)}',
+                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                                color: Theme.of(context).colorScheme.primary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ],
                               ],
                             );
                           },
@@ -347,14 +553,14 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _isLoading ? null : _addExpense,
+                  onPressed: _isLoading ? null : _submit,
                   child: _isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Add Expense'),
+                      : Text(widget.editingExpense == null ? 'Add Expense' : 'Save Changes'),
                 ),
               ),
             ],

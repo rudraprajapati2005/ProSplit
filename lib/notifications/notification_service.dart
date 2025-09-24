@@ -64,6 +64,22 @@ class NotificationService {
     });
   }
 
+  // Debug helper: print user's FCM tokens
+  Future<void> debugPrintUserFcmTokens(String userId) async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      final data = doc.data() ?? {};
+      final tokens = List<String>.from(data['fcmTokens'] ?? const <String>[]);
+      if (tokens.isEmpty) {
+        print('🔎 FCM tokens for $userId: (none)');
+      } else {
+        print('🔎 FCM tokens for $userId: ${tokens.join(', ')}');
+      }
+    } catch (e) {
+      print('❌ Error fetching FCM tokens for $userId: $e');
+    }
+  }
+
   // Start listening to Firestore notifications for a specific user
   Future<void> startUserNotificationListener(String userId) async {
     await _notifSub?.cancel();

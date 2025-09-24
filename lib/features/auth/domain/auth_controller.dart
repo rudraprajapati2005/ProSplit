@@ -35,6 +35,8 @@ class AuthController extends StateNotifier<AsyncValue<UserModel?>> {
         state = AsyncValue.data(user);
         // Sync FCM token under this user
         await NotificationService.instance.syncFcmToken(user.id);
+        // Debug: print user's tokens
+        await NotificationService.instance.debugPrintUserFcmTokens(user.id);
         // Start per-user notification listener
         await NotificationService.instance.startUserNotificationListener(user.id);
       } else {
